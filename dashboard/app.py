@@ -360,9 +360,16 @@ elif page == "Forecast":
     label = INSTRUMENT_LABELS[instrument]
     HORIZON_PRESETS = {"1W": 7, "2W": 14, "1M": 30, "2M": 60, "3M": 90}
     horizon_label = st.segmented_control(
-        "Forecast horizon", options=list(HORIZON_PRESETS.keys()), default="1M", key="forecast_horizon",
+        "Forecast horizon", options=list(HORIZON_PRESETS.keys()) + ["Custom"],
+        default="1M", key="forecast_horizon",
     )
-    horizon = HORIZON_PRESETS.get(horizon_label, 30)
+    if horizon_label == "Custom":
+        # 90 is a hard ceiling, not just a UI choice -- predict.py only ever generates
+        # 90 days of future forecast per model, so there's no data beyond that to show.
+        horizon = st.number_input("Custom horizon (days)", min_value=1, max_value=90,
+                                  value=30, step=1, key="forecast_horizon_custom")
+    else:
+        horizon = HORIZON_PRESETS.get(horizon_label, 30)
     show_candles = st.checkbox(
         "Show daily trading range (candlesticks) instead of a plain price line", value=False,
     )
