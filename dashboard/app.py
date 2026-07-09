@@ -50,10 +50,10 @@ DATE_PRESETS = {
 }
 
 
-def date_range_picker(key: str, min_date: date, max_date: date, default: str = "1Y"):
+def date_range_picker(key: str, min_date: date, max_date: date, default: str = "1Y", label: str = "Date range"):
     options = list(DATE_PRESETS.keys()) + ["Custom"]
     preset = st.segmented_control(
-        "Date range", options=options, default=default, key=f"{key}_preset",
+        label, options=options, default=default, key=f"{key}_preset",
     )
 
     if preset == "Custom":
@@ -358,6 +358,10 @@ elif page == "Forecast":
         key="forecast_instrument",
     )
     label = INSTRUMENT_LABELS[instrument]
+    hist_min_date, hist_max_date = queries.get_date_range(instrument)
+    hist_start, hist_end = date_range_picker("forecast_history_range", hist_min_date, hist_max_date,
+                                             default="1Y", label="History shown")
+
     HORIZON_PRESETS = {"1W": 7, "2W": 14, "1M": 30, "2M": 60, "3M": 90}
     horizon_label = st.segmented_control(
         "Forecast horizon", options=list(HORIZON_PRESETS.keys()) + ["Custom"],
@@ -394,7 +398,7 @@ elif page == "Forecast":
     )
 
     with st.spinner("Loading forecast..."):
-        hist_df = queries.get_prices(instrument, "2000-01-01", str(date.today()))
+        hist_df = queries.get_prices(instrument, str(hist_start), str(hist_end))
         series = {
             m: queries.get_forecasts_future_only(instrument, model_name=m).head(horizon)
             for m in chosen_models
@@ -411,7 +415,7 @@ elif page == "Forecast":
     else:
         chart_fn = charts.forecast_candlestick_chart if show_candles else charts.forecast_chart
         st.plotly_chart(
-            chart_fn(hist_df.tail(365), series, label, display_name_overrides, show_forecast_labels),
+            chart_fn(hist_df, series, label, display_name_overrides, show_forecast_labels),
             use_container_width=True,
         )
 
@@ -428,15 +432,13 @@ elif page == "Forecast":
                     display_df.columns = ["Date", "Predicted (INR)", "Lower Bound", "Upper Bound"]
                     st.dataframe(display_df, use_container_width=True)
 
-        hist_recent = hist_df.tail(365)
-        fc_trend = insights.compute_trend(hist_recent["date"], hist_recent["close"])
+        fc_trend = insights.compute_trend(hist_df["date"], hist_df["close"])
         arrow, trend_label, trend_value, trend_delta = insights.trend_badge(fc_trend)
         st.markdown(
-            f"**What the chart shows:** the yellow line is the actual price so far; the dash-dot "
-            f"line is the realized trend over the last year (separate from any model's forward "
-            f"projection); each model's forecast line/band extends from there. {arrow} Recently, "
-            f"the price has been **{trend_label.lower()}** ({trend_value} over the last year, "
-            f"~{trend_delta})."
+            f"**What the chart shows:** the yellow line is the actual price over your selected "
+            f"history window; the dash-dot line is its realized trend (separate from any model's "
+            f"forward projection); each model's forecast line/band extends from there. {arrow} Over "
+            f"that window, the price has been **{trend_label.lower()}** ({trend_value}, ~{trend_delta})."
         )
         macro_snapshot = queries.get_macro_snapshot()
         st.markdown(f"**External factors these models use as inputs:**\n\n"
