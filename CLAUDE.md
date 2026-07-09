@@ -40,7 +40,7 @@ with the code**:
 
 ```
 pipeline/     collect.py → bronze.py → silver.py → gold.py     (data pipeline, DuckDB medallion)
-models/       train.py → evaluate.py → predict.py → track_predictions.py
+models/       train.py → evaluate.py → predict.py → track_predictions.py → backfill_live_predictions.py
 dashboard/    app.py (Streamlit UI) + charts.py + queries.py + insights.py
 refresh.sh    runs the full pipeline + auto-publishes to GitHub
 ```
@@ -68,6 +68,13 @@ refresh.sh    runs the full pipeline + auto-publishes to GitHub
   live rankings diverge from the backtest's "best choice" — that's expected, not a bug;
   worth revisiting the backtest methodology (e.g. rolling walk-forward) if live data keeps
   disagreeing with it over time.
+- **Gap backfill** (`models/backfill_live_predictions.py`): if the laptop is asleep/off on
+  a given day, no prediction ever gets logged for it — this closes that gap by retraining
+  each model using ONLY data strictly before the missed day (genuine walk-forward, no
+  lookahead) and immediately reconciling since the outcome is already known. No depth
+  limit by design (a long gap means real per-model retrain time, LSTM the slowest at ~1
+  min each — there's no honest shortcut). Scoped to the window since live tracking
+  actually started, not the full multi-decade history. Runs as refresh.sh step 7/8.
 - **Outlier-guarded ingestion**: a rolling-median check in the silver layer catches vendor
   data glitches before they corrupt technical indicators or training data (a real one hit:
   GOLDBEES.NS briefly printed ~1% of its actual price for two days in Dec 2019).
