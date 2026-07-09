@@ -51,8 +51,8 @@ def train_production_tree_model(model_name: str, df: pd.DataFrame, instrument: s
     return train_lightgbm(df, params=params)
 
 
-def forecast_prophet(model: Prophet, df: pd.DataFrame) -> pd.DataFrame:
-    future = model.make_future_dataframe(periods=FORECAST_DAYS)
+def forecast_prophet(model: Prophet, df: pd.DataFrame, forecast_days: int = FORECAST_DAYS) -> pd.DataFrame:
+    future = model.make_future_dataframe(periods=forecast_days)
 
     hist_macro = df[["date"] + MACRO_COLS].rename(columns={"date": "ds"})
     hist_macro["ds"] = pd.to_datetime(hist_macro["ds"]).dt.tz_localize(None)
@@ -71,7 +71,7 @@ def forecast_prophet(model: Prophet, df: pd.DataFrame) -> pd.DataFrame:
     return result
 
 
-def forecast_arima(model, df: pd.DataFrame) -> pd.DataFrame:
+def forecast_arima(model, df: pd.DataFrame, forecast_days: int = FORECAST_DAYS) -> pd.DataFrame:
     exog_hist = df[MACRO_COLS].values
     fitted = pd.DataFrame({
         "date": df["date"],
@@ -82,9 +82,9 @@ def forecast_arima(model, df: pd.DataFrame) -> pd.DataFrame:
     })
 
     last_macro = df[MACRO_COLS].iloc[-1].values
-    future_exog = np.tile(last_macro, (FORECAST_DAYS, 1))
-    future_preds, conf_int = model.predict(n_periods=FORECAST_DAYS, X=future_exog, return_conf_int=True)
-    future_dates = business_days_forward(df["date"].max().date(), FORECAST_DAYS)
+    future_exog = np.tile(last_macro, (forecast_days, 1))
+    future_preds, conf_int = model.predict(n_periods=forecast_days, X=future_exog, return_conf_int=True)
+    future_dates = business_days_forward(df["date"].max().date(), forecast_days)
     future_df = pd.DataFrame({
         "date": pd.to_datetime(future_dates),
         "yhat": future_preds,
@@ -95,7 +95,7 @@ def forecast_arima(model, df: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([fitted, future_df], ignore_index=True)
 
 
-def forecast_tree_model(model, df: pd.DataFrame) -> pd.DataFrame:
+def forecast_tree_model(model, df: pd.DataFrame, forecast_days: int = FORECAST_DAYS) -> pd.DataFrame:
     """
     Model predicts log_return; reconstruct price by compounding onto a running estimate.
     Fitted (in-sample) values reconstruct from the true previous actual close (walk-forward,
@@ -136,7 +136,7 @@ def forecast_tree_model(model, df: pd.DataFrame) -> pd.DataFrame:
     price_window = list(df["close_inr"].tail(30))
     running_price = float(df["close_inr"].iloc[-1])
 
-    for step, day in enumerate(business_days_forward(df["date"].max().date(), FORECAST_DAYS), start=1):
+    for step, day in enumerate(business_days_forward(df["date"].max().date(), forecast_days), start=1):
         lag_1 = price_window[-1]
         lag_7 = price_window[-7] if len(price_window) >= 7 else price_window[0]
         lag_30 = price_window[-30] if len(price_window) >= 30 else price_window[0]

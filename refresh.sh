@@ -20,25 +20,28 @@ echo "=== Gold Forecast Refresh Started: $(date) ==="
 
 source "$SCRIPT_DIR/venv/bin/activate"
 
-echo "[1/7] Collecting raw data..."
+echo "[1/8] Collecting raw data..."
 python pipeline/collect.py
 
-echo "[2/7] Loading bronze layer..."
+echo "[2/8] Loading bronze layer..."
 python pipeline/bronze.py
 
-echo "[3/7] Building silver layer..."
+echo "[3/8] Building silver layer..."
 python pipeline/silver.py
 
-echo "[4/7] Building gold layer..."
+echo "[4/8] Building gold layer..."
 python pipeline/gold.py
 
-echo "[5/7] Generating forecasts..."
+echo "[5/8] Generating forecasts..."
 python models/predict.py
 
-echo "[6/7] Reconciling live predictions + logging tomorrow's..."
+echo "[6/8] Reconciling live predictions + logging tomorrow's..."
 python models/track_predictions.py
 
-echo "[7/7] Publishing updated data to GitHub..."
+echo "[7/8] Backfilling any missed days (laptop asleep/off)..."
+python models/backfill_live_predictions.py
+
+echo "[8/8] Publishing updated data to GitHub..."
 if [ -n "$(git status --porcelain -- gold_forecast.duckdb)" ]; then
     git add gold_forecast.duckdb
     git commit -m "Automated daily data refresh: $(date +%Y-%m-%d)"
