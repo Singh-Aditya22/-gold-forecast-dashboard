@@ -1,0 +1,10 @@
+# Minimal dependency set for just SERVING the dashboard (dashboard/app.py and everything
+# it imports: charts.py, queries.py, insights.py). The pipeline/model scripts (collect.py,
+# train.py, evaluate.py, predict.py) need the full requirements.txt instead -- this file is
+# for a fast Streamlit Community Cloud deploy that only reads the pre-built
+# gold_forecast.duckdb, not for running the training pipeline.
+duckdb>=0.10.0
+pandas>=2.0.0
+numpy>=1.26.0
+streamlit>=1.35.0
+plotly>=5.22.0

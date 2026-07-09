@@ -74,6 +74,21 @@ A pre-built `gold_forecast.duckdb` (with all layers and trained-model forecasts 
 computed) is included, so you can run just `streamlit run dashboard/app.py` and explore
 the dashboard immediately without waiting on the full pipeline.
 
+## Deploying the dashboard (Streamlit Community Cloud)
+
+`dashboard/app.py` and everything it imports (`charts.py`, `queries.py`, `insights.py`)
+only need `streamlit`, `duckdb`, `pandas`, `numpy`, and `plotly` — the heavier libraries
+in `requirements.txt` (prophet, xgboost, lightgbm, pmdarima, torch, yfinance, mftool) are
+only used by the training pipeline scripts, not by the dashboard itself, since it just
+reads the pre-built `gold_forecast.duckdb`. Use **`requirements-dashboard.txt`** for a
+much faster, lighter cloud deploy:
+
+1. Go to [share.streamlit.io](https://share.streamlit.io), sign in with GitHub
+2. "New app" → this repo → branch `main` → main file path `dashboard/app.py`
+3. Under "Advanced settings", set the requirements file to `requirements-dashboard.txt`
+4. Deploy — auto-redeploys on every push to `main`. Delete the app from the same dashboard
+   to take it down (or just leave it — Streamlit's free tier auto-sleeps idle apps).
+
 ## Dashboard pages
 
 - **Overview** — normalized return comparison across instruments + correlation heatmap
