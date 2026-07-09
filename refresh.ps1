@@ -13,6 +13,7 @@
 param([switch]$Force)
 
 $ErrorActionPreference = "Stop"
+$env:PYTHONIOENCODING = "utf-8"   # Windows console defaults to cp1252; Python scripts use → which needs UTF-8
 $SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Definition
 Set-Location $SCRIPT_DIR
 
@@ -28,12 +29,14 @@ function Log([string]$msg) {
 
 Log "=== Gold Forecast Refresh Started ==="
 
-# Activate venv
-$activateScript = Join-Path $SCRIPT_DIR "venv\Scripts\Activate.ps1"
+# Activate venv — lives at C:\gfd\ (short path required: torch has paths that exceed
+# Windows MAX_PATH=260 if the venv is nested inside the OneDrive project folder).
+$activateScript = "C:\gfd\Scripts\Activate.ps1"
 if (-not (Test-Path $activateScript)) {
-    Log "[ERROR] venv not found at $activateScript"
-    Log "        Run: python -m venv venv; venv\Scripts\pip install -r requirements.txt"
-    Log "        Then: venv\Scripts\pip install torch --index-url https://download.pytorch.org/whl/cpu"
+    Log "[ERROR] venv not found at C:\gfd"
+    Log "        Run: python -m venv C:\gfd"
+    Log "             C:\gfd\Scripts\pip install -r requirements.txt"
+    Log "             C:\gfd\Scripts\pip install torch --index-url https://download.pytorch.org/whl/cpu"
     exit 1
 }
 . $activateScript
