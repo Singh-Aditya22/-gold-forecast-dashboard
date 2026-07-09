@@ -31,10 +31,22 @@ with the code**:
 - **`.streamlit/config.toml`** binds the dashboard to `127.0.0.1` only (localhost-only,
   no LAN/WiFi access) — this was a deliberate choice on the personal laptop; reconsider
   per-machine if that's not the right default elsewhere.
-- The personal laptop's `refresh.sh` auto-commits and pushes `gold_forecast.duckdb` after
-  each successful daily refresh (see `refresh.sh`'s step 7). If you also run refresh
-  locally elsewhere, you'll get the same behavior — be aware two machines running it
-  independently could both try to push data, first one wins, second one needs a pull first.
+- `refresh.sh` is git-tracked, so it behaves identically on any machine that runs it —
+  no per-machine setup needed for the multi-machine safety logic below. Only the
+  systemd timer that *triggers* it automatically is personal-laptop-only; on the office
+  laptop just run `./refresh.sh` manually (or set up your own timer the same way if you
+  want it automated there too).
+- **Same-day multi-machine safety**: `refresh.sh` step 1 always `git pull`s first, then
+  (after the cheap collect/bronze/silver steps re-fetch prices) checks whether the
+  *latest available trading day* already has a logged prediction in
+  `gold.live_predictions` (`predicted_on`, which tracks `MAX(silver.prices.date)`, not
+  the wall-clock date — they differ whenever today's close isn't in yet, e.g. mornings
+  or weekends). If another machine already processed that trading day earlier (and this
+  run just pulled the result), it skips the expensive model-retraining steps entirely
+  instead of redundantly retraining every model (~15-20 min wasted) and then racing to
+  `git push` a conflicting binary database file (which would fail non-fast-forward and
+  need manual resolution, since a binary file has no textual merge). Pass
+  `./refresh.sh --force` to bypass the skip and refresh anyway.
 
 ## Architecture
 
@@ -78,6 +90,30 @@ refresh.sh    runs the full pipeline + auto-publishes to GitHub
 - **Outlier-guarded ingestion**: a rolling-median check in the silver layer catches vendor
   data glitches before they corrupt technical indicators or training data (a real one hit:
   GOLDBEES.NS briefly printed ~1% of its actual price for two days in Dec 2019).
+
+## Running it — daily refresh vs. manual re-tuning
+
+Two very different things are both called "training" here, and only one runs
+automatically:
+
+- **`refresh.sh` (daily, automatic)** re-fits every model from scratch each day on the
+  latest data, but using *already-tuned* hyperparameters cached in
+  `models/saved/*_params.json`. This is fast (a few minutes) and is all the daily cycle
+  ever does — it never re-runs the hyperparameter search.
+- **`python models/train.py` (manual, occasional)** is the expensive step: a fresh
+  `RandomizedSearchCV` hyperparameter search for XGBoost/LightGBM + LSTM training,
+  ~15-20 min. This is NOT part of `refresh.sh` and does not run automatically anywhere,
+  by design — daily re-tuning adds cost with little benefit at daily-frequency financial
+  data, and would make the automated refresh far too slow.
+
+Re-run `models/train.py` manually (on either machine, then `git push` the updated
+`models/saved/*.json`/`*.pt` files + `git pull` on the other machine) every few months,
+or sooner if: a large volume of new data has accumulated since the last tune, live
+tracking (`gold.live_predictions`) shows a model persistently underperforming in a way
+that looks like stale hyperparameters rather than normal noise, or after a market regime
+shift you'd expect to change the right hyperparameters (e.g. a volatility spike). After
+re-tuning, re-run `python models/evaluate.py` too, so `gold.model_scores.selected`
+reflects the new backtest results.
 
 ## Two requirements files
 
