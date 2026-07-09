@@ -93,22 +93,35 @@ def buy_sell_read(trend: dict, rsi: float = None, drawdown_pct: float = None) ->
 
 def get_macro_snapshot(con) -> dict:
     """Latest macro reading + its own 1-year average, so callers can describe current
-    conditions as elevated/subdued/near-average without another query round trip."""
-    row = con.execute("""
-        SELECT date, vix_close, oil_close, usd_index_close, us10y_yield_close
-        FROM silver.macro_features ORDER BY date DESC LIMIT 1
-    """).fetchone()
+    conditions as elevated/subdued/near-average without another query round trip.
+    USD/INR is queried with a fallback: an older committed gold_forecast.duckdb won't
+    have the usdinr_close column yet, and the dashboard must not crash on it."""
+    try:
+        row = con.execute("""
+            SELECT date, vix_close, oil_close, usd_index_close, us10y_yield_close, usdinr_close
+            FROM silver.macro_features ORDER BY date DESC LIMIT 1
+        """).fetchone()
+        has_inr = True
+    except Exception:
+        row = con.execute("""
+            SELECT date, vix_close, oil_close, usd_index_close, us10y_yield_close
+            FROM silver.macro_features ORDER BY date DESC LIMIT 1
+        """).fetchone()
+        has_inr = False
     if row is None:
         return {}
     latest_date = row[0]
+    inr_cols = ", AVG(usdinr_close)" if has_inr else ""
     avgs = con.execute(f"""
-        SELECT AVG(vix_close), AVG(oil_close), AVG(usd_index_close), AVG(us10y_yield_close)
+        SELECT AVG(vix_close), AVG(oil_close), AVG(usd_index_close), AVG(us10y_yield_close){inr_cols}
         FROM silver.macro_features
         WHERE date >= DATE '{latest_date}' - INTERVAL 365 DAY
     """).fetchone()
     return {
         "date": row[0], "vix": row[1], "oil": row[2], "usd_index": row[3], "us10y_yield": row[4],
+        "usdinr": row[5] if has_inr else None,
         "vix_avg": avgs[0], "oil_avg": avgs[1], "usd_index_avg": avgs[2], "us10y_yield_avg": avgs[3],
+        "usdinr_avg": avgs[4] if has_inr else None,
     }
 
 
@@ -159,6 +172,19 @@ def macro_commentary(snapshot: dict) -> str:
         lines.append(f"- **Crude oil** is running well above its 1-year average (${oil:.1f} vs "
                       f"${oil_avg:.1f}) — often a sign of geopolitical tension or inflation pressure, "
                       f"both historically supportive of gold.")
+
+    inr, inr_avg = snapshot.get("usdinr"), snapshot.get("usdinr_avg")
+    if inr and inr_avg:
+        if inr > inr_avg * 1.02:
+            lines.append(f"- **Rupee (USD/INR)** is weaker than its 1-year average (₹{inr:.1f} vs "
+                          f"₹{inr_avg:.1f} per dollar) — a weaker rupee directly raises the INR price "
+                          f"of gold, supporting domestic gold ETFs and funds even when the dollar gold "
+                          f"price is flat.")
+        elif inr < inr_avg * 0.98:
+            lines.append(f"- **Rupee (USD/INR)** is stronger than its 1-year average (₹{inr:.1f} vs "
+                          f"₹{inr_avg:.1f} per dollar) — a stronger rupee directly lowers the INR price "
+                          f"of gold, a headwind for domestic gold ETFs and funds independent of the "
+                          f"dollar gold price.")
 
     if not lines:
         return ("Macro conditions (market fear, USD, yields, oil) are all broadly near their recent "
@@ -278,6 +304,31 @@ def dip_backtest_verdict(summary: pd.DataFrame, instrument_label: str) -> str:
         f"{lead} (median advantage ranged from {adv_lo:+.1f} to {adv_hi:+.1f} percentage points). "
         f"One caveat: dip days cluster into episodes (a single long dip contributes many "
         f"overlapping samples), so treat this as historical evidence, not statistical proof."
+    )
+
+
+def etf_premium_read(latest_zscore: float, latest_premium_pct: float) -> str:
+    """One-line plain-language read of the ETF's current premium/discount vs.
+    international gold parity."""
+    if latest_zscore is None or pd.isna(latest_zscore):
+        return "Not enough overlapping history to read the ETF's premium right now."
+    if latest_zscore >= 2:
+        verdict = ("**noticeably rich** vs. international gold — buying today pays an unusual "
+                   "premium over parity; historically this has tended to normalize back down")
+    elif latest_zscore >= 1:
+        verdict = "**slightly rich** vs. international gold — a mild premium over its usual level"
+    elif latest_zscore <= -2:
+        verdict = ("**noticeably cheap** vs. international gold — an unusual discount to parity; "
+                   "historically this has tended to normalize back up")
+    elif latest_zscore <= -1:
+        verdict = "**slightly cheap** vs. international gold — a mild discount to its usual level"
+    else:
+        verdict = "**near its usual level** vs. international gold — no meaningful premium or discount"
+    return (
+        f"Right now this ETF is {verdict} (z = {latest_zscore:+.1f}, "
+        f"{latest_premium_pct:+.2f}% vs. its 1-year average ratio). This reflects tracking "
+        f"error, local demand, and expense drag — context for entry timing, not an arbitrage "
+        f"signal."
     )
 
 

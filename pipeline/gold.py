@@ -4,6 +4,7 @@ Build the gold analytics layer from silver.prices.
 Tables produced:
   gold.technical_features  — MA50, MA200, RSI, Bollinger Bands, rolling vol, drawdown, dip flag
   gold.normalized_returns  — % return from each instrument's inception date
+  gold.etf_premium         — each ETF's price ratio to international gold (INR), z-scored
 Run after silver.py.
 """
 
@@ -170,10 +171,68 @@ def build_normalized_returns(con: duckdb.DuckDBPyConnection) -> None:
     print(f"[gold] Built gold.normalized_returns — {row_count} rows")
 
 
+def build_etf_premium(con: duckdb.DuckDBPyConnection) -> None:
+    """
+    Is the ETF rich or cheap vs. international gold parity? The raw ratio of ETF price to
+    INR-converted futures is meaningless in absolute terms (ETF units track ~0.01g vs.
+    futures per-ounce, and expense-ratio drag adds a slow secular drift) -- the signal is
+    the ratio's deviation from its OWN 1-year rolling mean, which the z-score and relative
+    premium capture while the rolling window absorbs the drift.
+    """
+    con.execute("DROP TABLE IF EXISTS gold.etf_premium")
+    con.execute("""
+        CREATE TABLE gold.etf_premium AS
+
+        WITH fut AS (
+            SELECT date, close_inr AS fut_inr
+            FROM silver.prices WHERE instrument = 'gold_futures'
+        ),
+
+        etf AS (
+            SELECT date, instrument, close_inr AS etf_inr
+            FROM silver.prices
+            WHERE instrument IN ('goldbees_etf', 'hdfc_gold_etf')
+        ),
+
+        ratio AS (
+            SELECT e.date, e.instrument, e.etf_inr / f.fut_inr AS ratio
+            FROM etf e
+            JOIN fut f ON e.date = f.date
+            WHERE f.fut_inr > 0
+        ),
+
+        stats AS (
+            SELECT *,
+                AVG(ratio)    OVER w AS ratio_avg_1y,
+                STDDEV(ratio) OVER w AS ratio_std_1y
+            FROM ratio
+            WINDOW w AS (
+                PARTITION BY instrument ORDER BY date
+                ROWS BETWEEN 251 PRECEDING AND CURRENT ROW
+            )
+        )
+
+        SELECT
+            date,
+            instrument,
+            ratio,
+            ROUND((ratio / ratio_avg_1y - 1) * 100, 4) AS premium_vs_1y_avg_pct,
+            CASE WHEN ratio_std_1y > 0
+                 THEN ROUND((ratio - ratio_avg_1y) / ratio_std_1y, 4)
+            END AS premium_zscore
+        FROM stats
+        ORDER BY instrument, date
+    """)
+
+    row_count = con.execute("SELECT COUNT(*) FROM gold.etf_premium").fetchone()[0]
+    print(f"[gold] Built gold.etf_premium — {row_count} rows")
+
+
 if __name__ == "__main__":
     con = duckdb.connect(DB_PATH)
     con.execute("CREATE SCHEMA IF NOT EXISTS gold")
     build_technical_features(con)
     build_normalized_returns(con)
+    build_etf_premium(con)
     con.close()
     print("[gold] Done.")

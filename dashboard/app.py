@@ -265,6 +265,22 @@ elif page == "Individual Instrument":
         else:
             st.info("Not enough history yet for a month-by-month seasonal read (needs 2+ years).")
 
+        if instrument in ("goldbees_etf", "hdfc_gold_etf"):
+            premium_df = queries.get_etf_premium(instrument, str(start), str(end))
+            if not premium_df.empty and premium_df["premium_zscore"].notna().any():
+                st.subheader("Is this ETF rich or cheap vs. international gold?")
+                st.plotly_chart(charts.etf_premium_chart(premium_df, label),
+                                use_container_width=True)
+                latest = premium_df[premium_df["premium_zscore"].notna()].iloc[-1]
+                st.markdown(insights.etf_premium_read(latest["premium_zscore"],
+                                                      latest["premium_vs_1y_avg_pct"]))
+                st.caption(
+                    "Compares this ETF's price to INR-converted international gold futures, "
+                    "relative to its own 1-year average relationship. The absolute ratio means "
+                    "nothing (different units, expense drag) — only the deviation from its own "
+                    "norm is the signal."
+                )
+
         if not is_nav_only:
             with st.expander("📋 Live Track Record — real predictions vs. what actually happened"):
                 live_df = queries.get_live_predictions(instrument)

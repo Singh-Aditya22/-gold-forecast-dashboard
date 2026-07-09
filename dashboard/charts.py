@@ -658,6 +658,37 @@ def seasonality_heatmap(monthly_df: pd.DataFrame, instrument_label: str) -> go.F
     return fig
 
 
+def etf_premium_chart(premium_df: pd.DataFrame, instrument_label: str) -> go.Figure:
+    """
+    Z-score of the ETF's price ratio to international gold vs. its own 1-year rolling
+    mean. ±2 sigma guide lines mark "rich"/"cheap" -- the absolute ratio level carries no
+    meaning (unit mismatch + expense drift), only the deviation does.
+    """
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=premium_df["date"], y=premium_df["premium_zscore"],
+        name="Deviation from 1-year norm (z-score)",
+        line=dict(color="#3987e5", width=1.5),
+        customdata=premium_df[["premium_vs_1y_avg_pct"]].values,
+        hovertemplate="z = %{y:.2f} (%{customdata[0]:+.2f}% vs 1-yr avg)<extra></extra>",
+    ))
+    fig.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.4)
+    fig.add_hline(y=2, line_dash="dash", line_color=STATUS_CRITICAL, opacity=0.7,
+                  annotation_text="Rich vs international gold — buying now pays a premium",
+                  annotation_position="top left")
+    fig.add_hline(y=-2, line_dash="dash", line_color=STATUS_GOOD, opacity=0.7,
+                  annotation_text="Cheap vs international gold",
+                  annotation_position="bottom left")
+    fig.update_layout(
+        title=f"{instrument_label} — Rich or cheap vs. international gold?",
+        yaxis_title="Deviation from its own 1-year norm (σ)", xaxis_title="Date",
+        height=380, template="plotly_dark",
+        legend=dict(orientation="h", y=-0.2, x=0.5, xanchor="center"),
+        margin=dict(l=40, r=40, t=60, b=60),
+    )
+    return fig
+
+
 def volatility_chart(tech_df: pd.DataFrame, instrument_label: str, show_trend: bool = True) -> go.Figure:
     # rolling_vol_30d is a std dev of the raw price LEVEL (INR), not of returns -- normalize
     # by price so this reads as a genuine "% of price" swing regardless of the instrument's

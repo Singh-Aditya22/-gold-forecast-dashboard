@@ -163,23 +163,30 @@ def build_macro_features(con: duckdb.DuckDBPyConnection) -> None:
         oil  AS (SELECT date, close AS oil_close FROM bronze.crude_oil WHERE close IS NOT NULL),
         usd  AS (SELECT date, close AS usd_index_close FROM bronze.usd_index WHERE close IS NOT NULL),
         y10  AS (SELECT date, close AS us10y_yield_close FROM bronze.us10y_yield WHERE close IS NOT NULL),
+        -- USD/INR: a *direct* driver of INR-priced gold (INR gold ~ USD gold x USDINR),
+        -- not just a conversion rate -- surfaced here so the dashboard commentary and
+        -- (eventually) the models can use it like any other macro series.
+        inr  AS (SELECT date, close AS usdinr_close FROM bronze.usd_inr WHERE close IS NOT NULL),
         all_dates AS (
             SELECT date FROM vix
             UNION SELECT date FROM oil
             UNION SELECT date FROM usd
             UNION SELECT date FROM y10
+            UNION SELECT date FROM inr
         )
         SELECT
             ad.date,
             v.vix_close,
             o.oil_close,
             u.usd_index_close,
-            t.us10y_yield_close
+            t.us10y_yield_close,
+            i.usdinr_close
         FROM all_dates ad
         LEFT JOIN vix v ON ad.date = v.date
         LEFT JOIN oil  o ON ad.date = o.date
         LEFT JOIN usd  u ON ad.date = u.date
         LEFT JOIN y10  t ON ad.date = t.date
+        LEFT JOIN inr  i ON ad.date = i.date
         ORDER BY ad.date
     """)
     row_count = con.execute("SELECT COUNT(*) FROM silver.macro_features").fetchone()[0]

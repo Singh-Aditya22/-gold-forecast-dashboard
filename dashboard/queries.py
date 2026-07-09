@@ -317,6 +317,23 @@ def get_monthly_returns(instrument: str) -> pd.DataFrame:
     return df[~((df["year"] == today.year) & (df["month"] == today.month))].reset_index(drop=True)
 
 
+def get_etf_premium(instrument: str, start_date: str, end_date: str) -> pd.DataFrame:
+    """ETF price vs. international gold parity (gold.etf_premium) -- try/except so a
+    dashboard running against an older committed DB (table not built yet) degrades to
+    an empty section instead of crashing."""
+    with _con() as con:
+        try:
+            return con.execute(f"""
+                SELECT date, ratio, premium_vs_1y_avg_pct, premium_zscore
+                FROM gold.etf_premium
+                WHERE instrument = '{instrument}'
+                  AND date BETWEEN '{start_date}' AND '{end_date}'
+                ORDER BY date
+            """).fetchdf()
+        except Exception:
+            return pd.DataFrame()
+
+
 EVENTS_CSV = os.path.join(os.path.dirname(__file__), "..", "data", "events.csv")
 
 
