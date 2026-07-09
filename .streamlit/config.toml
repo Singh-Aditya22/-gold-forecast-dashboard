@@ -1,0 +1,11 @@
+[client]
+toolbarMode = "minimal"
+
+[server]
+# Localhost-only: no other device on the same WiFi/LAN can reach this, only a browser
+# running on this same machine (http://localhost:8501).
+address = "127.0.0.1"
+headless = true
+
+[browser]
+gatherUsageStats = false
