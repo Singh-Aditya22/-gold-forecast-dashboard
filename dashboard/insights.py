@@ -164,3 +164,139 @@ def macro_commentary(snapshot: dict) -> str:
         return ("Macro conditions (market fear, USD, yields, oil) are all broadly near their recent "
                 "averages right now — no strong signal either way from these factors.")
     return "\n".join(lines)
+
+
+def forecast_consensus(future_df: pd.DataFrame, last_close: float, horizon_days: int,
+                       flat_band_pct: float = 0.5) -> dict:
+    """
+    "What do the models agree on?" -- classify every model's forecast at the given horizon
+    as up/down/flat relative to the last actual close. The flat band matters: naive always
+    predicts ~0% change by construction, so without it the baseline would randomly pollute
+    the up/down counts on floating-point noise.
+    """
+    if future_df is None or future_df.empty or not last_close:
+        return None
+
+    per_model = []
+    for model_name, mdf in future_df.groupby("model_name"):
+        mdf = mdf.sort_values("date").head(horizon_days)
+        if mdf.empty:
+            continue
+        yhat = float(mdf["yhat"].iloc[-1])
+        pct = (yhat - last_close) / last_close * 100
+        direction = "up" if pct > flat_band_pct else "down" if pct < -flat_band_pct else "flat"
+        per_model.append({"model_name": model_name, "yhat": yhat,
+                          "pct_change": pct, "direction": direction})
+    if not per_model:
+        return None
+
+    n = len(per_model)
+    n_up = sum(r["direction"] == "up" for r in per_model)
+    n_down = sum(r["direction"] == "down" for r in per_model)
+    n_flat = n - n_up - n_down
+    top_share = max(n_up, n_down, n_flat) / n
+    agreement = "strong" if top_share >= 0.7 else "lean" if top_share > 0.5 else "split"
+
+    return {
+        "n_models": n, "n_up": n_up, "n_down": n_down, "n_flat": n_flat,
+        "median_pct_change": float(np.median([r["pct_change"] for r in per_model])),
+        "per_model": per_model, "agreement": agreement,
+    }
+
+
+def consensus_text(consensus: dict, horizon_label: str) -> str:
+    """Plain-language summary of the consensus dict, with the two honesty caveats that
+    stop "X of 7 models" from overstating independence."""
+    n, up, down = consensus["n_models"], consensus["n_up"], consensus["n_down"]
+    flat = consensus["n_flat"]
+    med = consensus["median_pct_change"]
+
+    if up > down and up > flat:
+        lead = f"**{up} of {n} models** expect the price to be *higher* in {horizon_label} than it is today"
+    elif down > up and down > flat:
+        lead = f"**{down} of {n} models** expect the price to be *lower* in {horizon_label} than it is today"
+    else:
+        lead = f"The models are **split** on where the price will be in {horizon_label}"
+
+    return (
+        f"{lead} (median call across all models: **{med:+.1f}%**). Two of the votes aren't "
+        f"independent: the naive baseline always says \"no change\" by construction, and the "
+        f"ensemble is just the average of the other six — so read this as context, not a poll "
+        f"of seven independent experts."
+    )
+
+
+DIP_BACKTEST_HORIZONS = [
+    ("fwd_30d", "1 month"), ("fwd_90d", "3 months"),
+    ("fwd_180d", "6 months"), ("fwd_365d", "1 year"),
+]
+
+
+def dip_backtest_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Median + quartile forward returns from dip days vs. all other days, per horizon.
+    Medians (not means) on purpose -- a couple of crisis rebounds shouldn't carry the
+    whole verdict.
+    """
+    if df is None or df.empty:
+        return pd.DataFrame()
+    rows = []
+    for col, label in DIP_BACKTEST_HORIZONS:
+        sub = df[df[col].notna()]
+        dip = sub[sub["is_dip_historical"] == True][col]
+        other = sub[sub["is_dip_historical"] != True][col]
+        if dip.empty or other.empty:
+            continue
+        rows.append({
+            "horizon": label, "dip_days": int(dip.count()),
+            "dip_median": dip.median(), "dip_q25": dip.quantile(0.25), "dip_q75": dip.quantile(0.75),
+            "other_median": other.median(), "other_q25": other.quantile(0.25), "other_q75": other.quantile(0.75),
+            "median_advantage": dip.median() - other.median(),
+        })
+    return pd.DataFrame(rows)
+
+
+def dip_backtest_verdict(summary: pd.DataFrame, instrument_label: str) -> str:
+    """One-paragraph plain-language verdict on the dip rule, with the statistical caveat:
+    dip days cluster into episodes, so these are overlapping, non-independent samples --
+    evidence about the past, not proof about the future."""
+    if summary is None or summary.empty:
+        return "Not enough dip history to judge for this instrument."
+    wins = summary[summary["median_advantage"] > 0]
+    n_h = len(summary)
+    if len(wins) == n_h:
+        lead = (f"For {instrument_label}, buying on a dip day beat buying on an ordinary day "
+                f"on **all {n_h} horizons** tested")
+    elif len(wins) == 0:
+        lead = (f"For {instrument_label}, buying on a dip day did **not** beat buying on an "
+                f"ordinary day on any horizon tested")
+    else:
+        lead = (f"For {instrument_label}, buying on a dip day beat buying on an ordinary day "
+                f"on **{len(wins)} of {n_h} horizons** tested")
+    adv_lo, adv_hi = summary["median_advantage"].min(), summary["median_advantage"].max()
+    return (
+        f"{lead} (median advantage ranged from {adv_lo:+.1f} to {adv_hi:+.1f} percentage points). "
+        f"One caveat: dip days cluster into episodes (a single long dip contributes many "
+        f"overlapping samples), so treat this as historical evidence, not statistical proof."
+    )
+
+
+MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+               "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
+def seasonality_text(monthly_df: pd.DataFrame) -> str:
+    """Best/worst average calendar months + the India demand-season context, with the
+    small-sample caveat that stops a heatmap cell from being read as a trading rule."""
+    if monthly_df is None or monthly_df.empty:
+        return "Not enough history to read a seasonal pattern."
+    means = monthly_df.groupby("month")["monthly_return_pct"].mean()
+    best, worst = int(means.idxmax()), int(means.idxmin())
+    return (
+        f"On average, **{MONTH_NAMES[best - 1]}** has been the strongest month "
+        f"({means[best]:+.1f}% avg) and **{MONTH_NAMES[worst - 1]}** the weakest "
+        f"({means[worst]:+.1f}% avg). Indian gold demand has a real seasonal rhythm — "
+        f"festival and wedding-season buying runs roughly October–December, plus Akshaya "
+        f"Tritiya in April/May — but each cell above is one month of one year (a small "
+        f"sample), so treat this as context, not a trading rule."
+    )

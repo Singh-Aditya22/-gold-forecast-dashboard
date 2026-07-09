@@ -190,9 +190,13 @@ elif page == "Individual Instrument":
                 f"{charts.MODEL_DISPLAY_NAMES.get(selected_model, selected_model)} (best choice)"
             )
 
+    show_events = st.checkbox("Mark major market events on the chart (duty changes, crises)",
+                              value=False, key="individual_show_events")
+
     with st.spinner(f"Loading {label}..."):
         price_df = queries.get_prices(instrument, str(start), str(end))
         tech_df = queries.get_technical_features(instrument, str(start), str(end))
+        events_df = queries.get_events(str(start), str(end)) if show_events else None
 
     if price_df.empty:
         st.warning("No price data for selected range.")
@@ -202,7 +206,8 @@ elif page == "Individual Instrument":
         else:
             st.plotly_chart(
                 charts.candlestick_chart(price_df, label, show_mas, show_bb, tech_df,
-                                        forecast_series, display_name_overrides, show_labels),
+                                        forecast_series, display_name_overrides, show_labels,
+                                        events_df=events_df),
                 use_container_width=True,
             )
 
@@ -246,6 +251,19 @@ elif page == "Individual Instrument":
                     f"bigger moves in either direction are becoming more likely, not a directional signal "
                     f"by itself."
                 )
+
+        st.subheader("Seasonality — month-by-month track record")
+        seasonality_df = queries.get_monthly_returns(instrument)
+        if len(seasonality_df) >= 24:
+            st.plotly_chart(charts.seasonality_heatmap(seasonality_df, label),
+                            use_container_width=True)
+            st.markdown(insights.seasonality_text(seasonality_df))
+            st.caption(
+                "Uses this instrument's full trading history, independent of the date range "
+                "selected above — a seasonal average needs every year of data to mean anything."
+            )
+        else:
+            st.info("Not enough history yet for a month-by-month seasonal read (needs 2+ years).")
 
         if not is_nav_only:
             with st.expander("📋 Live Track Record — real predictions vs. what actually happened"):
@@ -294,6 +312,8 @@ elif page == "Dip Tracker":
         key="dip_forecast_models",
     )
     show_dip_labels = st.checkbox("Show predicted values on the chart", value=False, key="dip_show_labels")
+    show_dip_events = st.checkbox("Mark major market events on the chart (duty changes, crises)",
+                                  value=False, key="dip_show_events")
 
     with st.spinner("Loading dip data..."):
         dip_df = queries.get_dip_tracker(instrument, str(start), str(end))
@@ -301,6 +321,7 @@ elif page == "Dip Tracker":
             m: queries.get_forecasts_future_only(instrument, model_name=m) for m in chosen_models
         }
         last_ma_200 = queries.get_last_ma_200(instrument)
+        events_df = queries.get_events(str(start), str(end)) if show_dip_events else None
 
     display_name_overrides = {}
     if selected_model in forecast_series:
@@ -313,7 +334,7 @@ elif page == "Dip Tracker":
     else:
         st.plotly_chart(
             charts.drawdown_chart(dip_df, label, forecast_series, display_name_overrides,
-                                 show_dip_labels, last_ma_200),
+                                 show_dip_labels, last_ma_200, events_df=events_df),
             use_container_width=True,
         )
 
@@ -333,6 +354,26 @@ elif page == "Dip Tracker":
         macro_snapshot = queries.get_macro_snapshot()
         st.markdown(f"**External factors currently affecting this instrument's model:**\n\n"
                    f"{insights.macro_commentary(macro_snapshot)}")
+
+        st.subheader("Was buying the dip actually a good idea?")
+        with st.spinner("Backtesting the dip rule over full history..."):
+            bt_df = queries.get_dip_forward_returns(instrument)
+            bt_summary = insights.dip_backtest_summary(bt_df)
+        if bt_summary.empty:
+            st.info("Not enough dip history to backtest for this instrument yet.")
+        else:
+            st.plotly_chart(charts.dip_forward_returns_chart(bt_df, label),
+                            use_container_width=True)
+            display_bt = bt_summary[["horizon", "dip_days", "dip_median", "other_median",
+                                     "median_advantage"]].copy()
+            display_bt.columns = ["Held for", "Dip days tested", "Median return buying the dip (%)",
+                                  "Median return any other day (%)", "Dip advantage (points)"]
+            st.dataframe(display_bt.round(2), use_container_width=True, hide_index=True)
+            st.markdown(insights.dip_backtest_verdict(bt_summary, label))
+            st.caption(
+                "Uses this instrument's full trading history (not the date range selected "
+                "above) — a backtest limited to the chart window would be cherry-picking."
+            )
 
         with st.expander("📋 Live Track Record — real predictions vs. what actually happened"):
             live_df = queries.get_live_predictions(instrument)
@@ -396,6 +437,29 @@ elif page == "Forecast":
         "it's the benchmark the ⭐ best-choice model had to beat. Add other models above "
         "to compare their trend estimates side by side."
     )
+
+    # ── What do the models agree on? ──
+    HORIZON_HUMAN = {"1W": "1 week", "2W": "2 weeks", "1M": "1 month",
+                     "2M": "2 months", "3M": "3 months"}
+    horizon_human = HORIZON_HUMAN.get(horizon_label, f"{horizon} days")
+    with st.spinner("Checking model consensus..."):
+        all_future = queries.get_forecasts_future_only(instrument)
+        last_close = queries.get_last_close(instrument)
+        consensus = insights.forecast_consensus(all_future, last_close, horizon)
+    if consensus:
+        st.subheader("What do the models agree on?")
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Models saying higher", f"{consensus['n_up']} of {consensus['n_models']}")
+        c2.metric(f"Median call ({horizon_human})", f"{consensus['median_pct_change']:+.1f}%")
+        c3.metric("Agreement", consensus["agreement"].capitalize())
+        st.markdown(insights.consensus_text(consensus, horizon_human))
+        with st.expander("Per-model breakdown"):
+            per_model_df = pd.DataFrame(consensus["per_model"])
+            per_model_df["model_name"] = per_model_df["model_name"].map(
+                lambda m: charts.MODEL_DISPLAY_NAMES.get(m, m))
+            per_model_df.columns = ["Model", "Predicted (INR)", "Change (%)", "Direction"]
+            st.dataframe(per_model_df.round(2), use_container_width=True, hide_index=True)
+        st.caption("Counts all 7 models regardless of which ones you chose to draw on the chart below.")
 
     with st.spinner("Loading forecast..."):
         hist_df = queries.get_prices(instrument, str(hist_start), str(hist_end))
@@ -496,7 +560,9 @@ elif page == "Model Comparison":
         display_df.columns = ["Instrument", "Model", "RMSE", "MAE", "Avg. Error (%)",
                                "Skill vs Naive", "Correct Direction (%)", "Best Choice"]
         st.dataframe(
-            display_df.style.applymap(
+            # Styler.map, not applymap -- applymap was removed in pandas 3.0, which a fresh
+            # environment (e.g. a Streamlit Cloud rebuild) will resolve to.
+            display_df.style.map(
                 lambda v: "background-color: #2d5a27" if v is True else "",
                 subset=["Best Choice"],
             ),

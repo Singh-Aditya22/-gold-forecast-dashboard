@@ -247,3 +247,86 @@ def get_all_instruments_summary() -> pd.DataFrame:
             GROUP BY instrument
             ORDER BY instrument
         """).fetchdf()
+
+
+def get_last_close(instrument: str) -> float:
+    """Most recent actual close -- the reference point the consensus panel measures each
+    model's forecast against."""
+    with _con() as con:
+        row = con.execute(f"""
+            SELECT close_inr FROM silver.prices
+            WHERE instrument = '{instrument}'
+            ORDER BY date DESC LIMIT 1
+        """).fetchone()
+    return row[0] if row else None
+
+
+def get_dip_forward_returns(instrument: str) -> pd.DataFrame:
+    """
+    Forward returns from EVERY historical day, tagged by whether that day was a dip
+    (is_dip_historical) -- lets the Dip Tracker answer "was buying the dip actually a
+    good idea?" with this instrument's own history rather than folklore. Horizons are
+    trading-day offsets (21/63/126/252 rows ~= 1/3/6/12 months), the standard convention.
+    Deliberately full-history: a backtest shouldn't be limited to the chart's window.
+    """
+    with _con() as con:
+        return con.execute(f"""
+            WITH px AS (
+                SELECT date, close_inr, is_dip_historical,
+                       LEAD(close_inr, 21)  OVER (ORDER BY date) AS close_30d,
+                       LEAD(close_inr, 63)  OVER (ORDER BY date) AS close_90d,
+                       LEAD(close_inr, 126) OVER (ORDER BY date) AS close_180d,
+                       LEAD(close_inr, 252) OVER (ORDER BY date) AS close_365d
+                FROM gold.technical_features
+                WHERE instrument = '{instrument}'
+            )
+            SELECT date, is_dip_historical,
+                   (close_30d  / close_inr - 1) * 100 AS fwd_30d,
+                   (close_90d  / close_inr - 1) * 100 AS fwd_90d,
+                   (close_180d / close_inr - 1) * 100 AS fwd_180d,
+                   (close_365d / close_inr - 1) * 100 AS fwd_365d
+            FROM px
+            ORDER BY date
+        """).fetchdf()
+
+
+def get_monthly_returns(instrument: str) -> pd.DataFrame:
+    """
+    Month-over-month % returns (month-end close to month-end close) over full history,
+    for the seasonality heatmap. The current in-progress calendar month is excluded --
+    its "return" isn't final and would read as a misleading cold/hot cell.
+    """
+    with _con() as con:
+        df = con.execute(f"""
+            WITH monthly AS (
+                SELECT date_trunc('month', date) AS month_start,
+                       max_by(close_inr, date) AS month_close
+                FROM silver.prices
+                WHERE instrument = '{instrument}'
+                GROUP BY 1
+            )
+            SELECT CAST(EXTRACT(year FROM month_start) AS INT)  AS year,
+                   CAST(EXTRACT(month FROM month_start) AS INT) AS month,
+                   (month_close / LAG(month_close) OVER (ORDER BY month_start) - 1) * 100
+                       AS monthly_return_pct
+            FROM monthly
+            ORDER BY year, month
+        """).fetchdf()
+    df = df.dropna(subset=["monthly_return_pct"])
+    today = pd.Timestamp.today()
+    return df[~((df["year"] == today.year) & (df["month"] == today.month))].reset_index(drop=True)
+
+
+EVENTS_CSV = os.path.join(os.path.dirname(__file__), "..", "data", "events.csv")
+
+
+def get_events(start_date: str, end_date: str) -> pd.DataFrame:
+    """Curated market events (import-duty changes, crises, policy pivots) from the
+    git-tracked data/events.csv -- pure file read, no DuckDB. Empty DataFrame if the
+    file is missing so the dashboard degrades gracefully."""
+    try:
+        events = pd.read_csv(EVENTS_CSV, parse_dates=["date"])
+    except Exception:
+        return pd.DataFrame(columns=["date", "label", "description"])
+    mask = (events["date"] >= pd.Timestamp(start_date)) & (events["date"] <= pd.Timestamp(end_date))
+    return events[mask].sort_values("date").reset_index(drop=True)

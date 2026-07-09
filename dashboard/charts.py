@@ -11,6 +11,7 @@ Titles, zone shading, and annotations favor plain language over financial jargon
 meant to be readable by someone with no investing background.
 """
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -67,7 +68,8 @@ MODEL_DISPLAY_NAMES = {
 def candlestick_chart(df: pd.DataFrame, instrument_label: str, show_mas: bool = True,
                       show_bb: bool = True, tech_df: pd.DataFrame = None,
                       forecast_series: dict = None, display_name_overrides: dict = None,
-                      show_labels: bool = False, show_trend: bool = True) -> go.Figure:
+                      show_labels: bool = False, show_trend: bool = True,
+                      events_df: pd.DataFrame = None) -> go.Figure:
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
@@ -97,6 +99,7 @@ def candlestick_chart(df: pd.DataFrame, instrument_label: str, show_mas: bool = 
             x=tech_df["date"], y=tech_df["ma_200"], name="200-day average price",
             line=dict(color=MA_LONG_COLOR, width=1.5, dash="dash"),
         ), row=1, col=1)
+        _add_ma_cross_markers(fig, tech_df, row=1, col=1)
 
     if tech_df is not None and show_bb:
         fig.add_trace(go.Scatter(
@@ -122,6 +125,9 @@ def candlestick_chart(df: pd.DataFrame, instrument_label: str, show_mas: bool = 
         _add_forecast_series(fig, forecast_series, display_name_overrides,
                              row=1, col=1, show_labels=show_labels)
 
+    if events_df is not None and not events_df.empty:
+        _add_event_markers(fig, events_df, y_anchor=df["high"].max(), row=1, col=1)
+
     fig.update_layout(
         height=780, xaxis_rangeslider_visible=False,
         template="plotly_dark",
@@ -129,6 +135,70 @@ def candlestick_chart(df: pd.DataFrame, instrument_label: str, show_mas: bool = 
         margin=dict(l=40, r=40, t=60, b=60),
     )
     return fig
+
+
+def _add_ma_cross_markers(fig: go.Figure, tech_df: pd.DataFrame,
+                          row: int = None, col: int = None) -> None:
+    """
+    Golden/death cross markers wherever the 50-day average crosses the 200-day average --
+    the two MA lines are already on the chart, but the crossing itself is the classic
+    trend-shift signal and is easy to miss visually without an explicit marker. Crosses
+    are only detectable within the plotted window (the first visible row has no prior
+    sign to compare against, by construction).
+    """
+    d = tech_df[["date", "ma_50", "ma_200"]].dropna()
+    if len(d) < 2:
+        return
+    sign = np.sign(d["ma_50"] - d["ma_200"])
+    prev = sign.shift()
+    golden = d[(sign > 0) & (prev <= 0) & prev.notna()]
+    death = d[(sign < 0) & (prev >= 0) & prev.notna()]
+    kwargs = {"row": row, "col": col} if row is not None else {}
+
+    if not golden.empty:
+        fig.add_trace(go.Scatter(
+            x=golden["date"], y=golden["ma_200"], mode="markers",
+            name="Golden cross — trend turning up",
+            marker=dict(symbol="triangle-up", size=13, color=STATUS_GOOD,
+                        line=dict(color="white", width=1)),
+            hovertemplate=("Golden cross: 50-day average rose above the 200-day average "
+                           "— historically read as a bullish trend shift<br>%{x|%d %b %Y}"
+                           "<extra></extra>"),
+        ), **kwargs)
+    if not death.empty:
+        fig.add_trace(go.Scatter(
+            x=death["date"], y=death["ma_200"], mode="markers",
+            name="Death cross — trend turning down",
+            marker=dict(symbol="triangle-down", size=13, color=STATUS_CRITICAL,
+                        line=dict(color="white", width=1)),
+            hovertemplate=("Death cross: 50-day average fell below the 200-day average "
+                           "— historically read as a bearish trend shift<br>%{x|%d %b %Y}"
+                           "<extra></extra>"),
+        ), **kwargs)
+
+
+def _add_event_markers(fig: go.Figure, events_df: pd.DataFrame, y_anchor: float,
+                       row: int = None, col: int = None) -> None:
+    """
+    Dotted vertical line per curated market event (import-duty changes, crises, policy
+    pivots) plus one hover-carrying marker trace pinned near the top of the price panel --
+    the vlines themselves have no hover, so without the marker trace the user would see
+    unexplained lines. One legend entry total ("Market events"), not one per event.
+    """
+    if events_df is None or events_df.empty:
+        return
+    kwargs = {"row": row, "col": col} if row is not None else {}
+    for _, ev in events_df.iterrows():
+        fig.add_vline(x=ev["date"], line_dash="dot", line_color=TREND_LINE_COLOR,
+                      opacity=0.5, **kwargs)
+    fig.add_trace(go.Scatter(
+        x=events_df["date"], y=[y_anchor] * len(events_df),
+        mode="markers", name="Market events",
+        marker=dict(symbol="diamond-open", size=10, color=TREND_LINE_COLOR),
+        customdata=events_df[["label", "description"]].values,
+        hovertemplate="<b>%{customdata[0]}</b><br>%{customdata[1]}<br>%{x|%d %b %Y}"
+                      "<extra>Market event</extra>",
+    ), **kwargs)
 
 
 def _add_rsi_panel(fig: go.Figure, tech_df: pd.DataFrame, row: int) -> None:
@@ -273,7 +343,8 @@ def correlation_heatmap(corr_matrix: pd.DataFrame) -> go.Figure:
 
 def drawdown_chart(dip_df: pd.DataFrame, instrument_label: str, forecast_series: dict = None,
                    display_name_overrides: dict = None, show_labels: bool = False,
-                   last_ma_200: float = None, show_trend: bool = True) -> go.Figure:
+                   last_ma_200: float = None, show_trend: bool = True,
+                   events_df: pd.DataFrame = None) -> go.Figure:
     """
     forecast_series draws each model's forward price line/band onto the price row (row 1).
     last_ma_200, if given, flags future days where a model's forecast dips >5% below the
@@ -320,6 +391,9 @@ def drawdown_chart(dip_df: pd.DataFrame, instrument_label: str, forecast_series:
                         marker=dict(color=STATUS_WARNING, size=8, symbol="diamond",
                                     line=dict(color=MODEL_COLORS.get(key, STATUS_WARNING), width=2)),
                     ), row=1, col=1)
+
+    if events_df is not None and not events_df.empty:
+        _add_event_markers(fig, events_df, y_anchor=dip_df["close_inr"].max(), row=1, col=1)
 
     fig.add_trace(go.Scatter(
         x=dip_df["date"], y=dip_df["drawdown_pct"], name="Below recent peak (%)",
@@ -516,6 +590,71 @@ def model_scores_chart(scores_df: pd.DataFrame) -> go.Figure:
         color_discrete_sequence=["#3987e5", "#199e70", "#c98500", "#9085e9"],
     )
     fig.update_layout(height=450, margin=dict(l=40, r=40, t=70, b=40))
+    return fig
+
+
+def dip_forward_returns_chart(bt_df: pd.DataFrame, instrument_label: str) -> go.Figure:
+    """
+    "If you had bought on a dip day, what happened next?" -- grouped box plots of forward
+    returns from dip days vs. all other days, per horizon. Medians/quartiles only
+    (boxpoints off): thousands of raw day-dots would just be noise here.
+    """
+    horizons = [("fwd_30d", "1 month later"), ("fwd_90d", "3 months later"),
+                ("fwd_180d", "6 months later"), ("fwd_365d", "1 year later")]
+    dip_x, dip_y, other_x, other_y = [], [], [], []
+    for col, label in horizons:
+        sub = bt_df[bt_df[col].notna()]
+        dip_vals = sub[sub["is_dip_historical"] == True][col].tolist()
+        other_vals = sub[sub["is_dip_historical"] != True][col].tolist()
+        dip_x += [label] * len(dip_vals);     dip_y += dip_vals
+        other_x += [label] * len(other_vals); other_y += other_vals
+
+    fig = go.Figure()
+    fig.add_trace(go.Box(x=dip_x, y=dip_y, name="Bought on a dip day",
+                         marker_color=STATUS_GOOD, boxpoints=False))
+    fig.add_trace(go.Box(x=other_x, y=other_y, name="Bought on any other day",
+                         marker_color=NAIVE_COLOR, boxpoints=False))
+    fig.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.4)
+    fig.update_layout(
+        title=f"{instrument_label} — If you had bought on a dip day, what happened next?",
+        yaxis_title="Return after buying (%)", boxmode="group",
+        height=460, template="plotly_dark",
+        legend=dict(orientation="h", y=-0.15, x=0.5, xanchor="center"),
+        margin=dict(l=40, r=40, t=60, b=60),
+    )
+    return fig
+
+
+def seasonality_heatmap(monthly_df: pd.DataFrame, instrument_label: str) -> go.Figure:
+    """
+    Year x month heatmap of monthly returns, with an all-years average row at the bottom --
+    the average row is the actual seasonal read; the per-year grid above it shows how noisy
+    that average is (which is the honest part).
+    """
+    pivot = monthly_df.pivot(index="year", columns="month", values="monthly_return_pct")
+    pivot = pivot.reindex(columns=range(1, 13))
+    avg_row = pivot.mean(axis=0)
+
+    years = [str(y) for y in pivot.index.tolist()]
+    z = pivot.values.tolist() + [avg_row.tolist()]
+    y_labels = years + ["Avg (all years)"]
+    text = [[f"{v:+.1f}" if pd.notna(v) else "" for v in row] for row in z]
+    month_names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+    fig = go.Figure(go.Heatmap(
+        z=z, x=month_names, y=y_labels,
+        colorscale="RdYlGn", zmid=0,
+        text=text, texttemplate="%{text}", textfont=dict(size=9),
+        colorbar=dict(title="Return %"),
+        hovertemplate="%{y} %{x}: %{z:+.1f}%<extra></extra>",
+    ))
+    fig.update_yaxes(autorange="reversed")  # oldest year at top, Avg row at the bottom
+    fig.update_layout(
+        title=f"{instrument_label} — Which months have historically been kind to buyers?",
+        height=max(400, 26 * len(y_labels) + 120), template="plotly_dark",
+        margin=dict(l=40, r=40, t=60, b=40),
+    )
     return fig
 
 
