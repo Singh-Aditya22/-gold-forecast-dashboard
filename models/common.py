@@ -23,7 +23,7 @@ INSTRUMENTS = ["gold_futures", "goldbees_etf", "hdfc_gold_etf"]
 
 LAG_COLS = ["lag_1", "lag_7", "lag_30"]
 TECH_COLS = ["ma_50", "ma_200", "rsi_14", "bb_upper", "bb_lower", "rolling_vol_30d", "drawdown_pct"]
-MACRO_COLS = ["vix_close", "oil_close", "usd_index_close", "us10y_yield_close"]
+MACRO_COLS = ["vix_close", "oil_close", "usd_index_close", "us10y_yield_close", "usdinr_close"]
 FEATURE_COLS = LAG_COLS + TECH_COLS + MACRO_COLS
 TARGET_COL = "log_return"
 
@@ -61,7 +61,8 @@ def load_instrument_data(con: duckdb.DuckDBPyConnection, instrument: str) -> pd.
               AND sp.close_inr IS NOT NULL
         )
         SELECT
-            inst.*, mf.vix_close, mf.oil_close, mf.usd_index_close, mf.us10y_yield_close
+            inst.*, mf.vix_close, mf.oil_close, mf.usd_index_close, mf.us10y_yield_close,
+            mf.usdinr_close
         FROM inst
         ASOF LEFT JOIN silver.macro_features mf
           ON inst.date >= mf.date

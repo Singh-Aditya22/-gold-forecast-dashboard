@@ -164,13 +164,20 @@ def evaluate_all() -> None:
 
     scores_df = pd.DataFrame(records)
 
-    def pick(group):
+    # Winner per instrument WITHOUT groupby.apply: pandas 3.0 changed apply to drop the
+    # grouping column from the result (include_groups=False became the default), which
+    # silently wrote gold.model_scores with no instrument column and broke every
+    # dashboard query against it. Plain groupby iteration keeps all columns on any
+    # pandas version.
+    def winner_for(group):
         passing = group[group["skill_score_vs_naive"] > 0]
-        winner = "naive" if passing.empty else passing.loc[passing["skill_score_vs_naive"].idxmax(), "model_name"]
-        group["selected"] = group["model_name"] == winner
-        return group
+        return "naive" if passing.empty else passing.loc[passing["skill_score_vs_naive"].idxmax(), "model_name"]
 
-    scores_df = scores_df.groupby("instrument", group_keys=False).apply(pick)
+    winners = {inst: winner_for(g) for inst, g in scores_df.groupby("instrument")}
+    scores_df["selected"] = [
+        row_model == winners[row_inst]
+        for row_inst, row_model in zip(scores_df["instrument"], scores_df["model_name"])
+    ]
 
     con.execute("CREATE TABLE gold.model_scores AS SELECT * FROM scores_df")
     print("\n[evaluate] gold.model_scores written.")

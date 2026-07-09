@@ -258,9 +258,12 @@ def run_predictions() -> None:
     final_df = pd.concat(all_forecasts, ignore_index=True)
     final_df = final_df[["date", "instrument", "model_name", "yhat", "yhat_lower", "yhat_upper", "is_future"]]
     final_df["date"] = pd.to_datetime(final_df["date"]).dt.date
-    final_df["yhat"] = final_df["yhat"].round(4)
-    final_df["yhat_lower"] = final_df["yhat_lower"].round(4) if final_df["yhat_lower"].notna().any() else final_df["yhat_lower"]
-    final_df["yhat_upper"] = final_df["yhat_upper"].round(4) if final_df["yhat_upper"].notna().any() else final_df["yhat_upper"]
+    # pd.to_numeric before rounding: concat of per-model frames (some with None bands,
+    # some with floats) yields an object-dtype column holding literal None -- pandas 3.0's
+    # Series.round raises on None instead of coercing it to NaN like float64 dtype did.
+    final_df["yhat"] = pd.to_numeric(final_df["yhat"], errors="coerce").round(4)
+    final_df["yhat_lower"] = pd.to_numeric(final_df["yhat_lower"], errors="coerce").round(4)
+    final_df["yhat_upper"] = pd.to_numeric(final_df["yhat_upper"], errors="coerce").round(4)
 
     con.execute("CREATE TABLE gold.forecasts AS SELECT * FROM final_df")
     print(f"[predict] gold.forecasts written — {len(final_df)} rows")
