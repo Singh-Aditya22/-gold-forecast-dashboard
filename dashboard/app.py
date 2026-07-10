@@ -10,7 +10,7 @@ from datetime import date, timedelta
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from dashboard import queries, charts, insights
+from dashboard import queries, charts, insights, chatbot
 
 st.set_page_config(
     page_title="Gold Forecast Dashboard",
@@ -26,6 +26,7 @@ PAGES = [
     "Forecast",
     "Model Comparison",
     "SGB Calculator",
+    "Ask AI",
 ]
 
 OHLCV_INSTRUMENTS = queries.OHLCV_INSTRUMENTS
@@ -35,7 +36,8 @@ INSTRUMENT_LABELS = queries.INSTRUMENT_LABELS
 
 # ── Sidebar navigation ──────────────────────────────────────────────────────
 st.sidebar.title("Gold Dashboard")
-page = st.sidebar.radio("Navigate", PAGES)
+page = st.sidebar.radio("Navigate", PAGES, key="nav_page")
+chatbot.sidebar_explain_button(page)
 st.sidebar.markdown("---")
 st.sidebar.caption("Data: Yahoo Finance · mftool · DuckDB")
 
@@ -653,3 +655,8 @@ elif page == "SGB Calculator":
             "Note: SGB interest bonus becomes fully tax-free only if you hold to the 8-year maturity "
             "as an original subscriber (primary issue). Secondary market purchases are taxed at 12.5%."
         )
+
+
+# ── Page: Ask AI ─────────────────────────────────────────────────────────────
+elif page == "Ask AI":
+    chatbot.render_chat_page()
