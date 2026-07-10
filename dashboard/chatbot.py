@@ -17,6 +17,7 @@ import re
 import sys
 import json
 from datetime import date
+from typing import Optional
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -169,7 +170,7 @@ TOOLS = [
 
 # ── Tool executors ───────────────────────────────────────────────────────────
 
-def _check_instrument(instrument: str) -> str | None:
+def _check_instrument(instrument: str) -> Optional[str]:
     """Whitelist-validate before anything reaches queries.py's f-string SQL."""
     if instrument not in queries.OHLCV_INSTRUMENTS:
         return (f"ERROR: unknown instrument '{instrument}'. "
