@@ -45,7 +45,7 @@ trusted if it actually adds value over doing nothing.
 ```
 pipeline/     collect.py → bronze.py → silver.py → gold.py   (data pipeline)
 models/       train.py → evaluate.py → predict.py → track_predictions.py
-dashboard/    app.py (Streamlit UI), charts.py, queries.py, insights.py
+dashboard/    app.py (Streamlit UI), charts.py, queries.py, insights.py, chatbot.py
 refresh.sh    runs the full daily pipeline end to end
 ```
 
@@ -74,6 +74,28 @@ A pre-built `gold_forecast.duckdb` (with all layers and trained-model forecasts 
 computed) is included, so you can run just `streamlit run dashboard/app.py` and explore
 the dashboard immediately without waiting on the full pipeline.
 
+## "Ask AI" chat (optional, local LLM — no API key, no cost)
+
+The **Ask AI** page is a chatbot that answers questions from the DuckDB data ("what's the
+latest gold price?", "I want to invest for 6 months — which instrument?") and explains
+every dashboard page. It runs a small open-weight model **entirely on your machine** via
+[Ollama](https://ollama.com) — nothing leaves your laptop, and there is no API bill.
+
+One-time setup (Linux; Windows: use the installer from ollama.com/download):
+
+```bash
+curl -fsSL https://ollama.com/install.sh | sh   # installs the Ollama server
+ollama pull llama3.1:8b                          # ~4.9GB, one time
+pip install ollama tabulate                      # the Python client, in your venv
+```
+
+- Default model is `llama3.1:8b`; override with the `OLLAMA_MODEL` env var (e.g.
+  `qwen2.5:7b` is a good alternative for SQL-heavy questions).
+- An NVIDIA GPU makes it ~5x faster but is optional — CPU works.
+- Without Ollama, everything else still works: the Ask AI page just shows a setup notice.
+  **Cloud deploys have no chat by design** (no GPU/server there) — the page says so.
+- Terminal smoke test without the UI: `python -m dashboard.chatbot "latest gold price?"`
+
 ## Deploying the dashboard (Streamlit Community Cloud)
 
 `dashboard/app.py` and everything it imports (`charts.py`, `queries.py`, `insights.py`)
@@ -98,6 +120,7 @@ much faster, lighter cloud deploy:
 - **Forecast** — pick any of the 7 models, compare side by side, with confidence bands
 - **Model Comparison** — full accuracy/skill-score table
 - **SGB Calculator** — Sovereign Gold Bond return calculator
+- **Ask AI** — local-LLM chatbot over the database (see "Ask AI" section above)
 
 ## Disclaimer
 

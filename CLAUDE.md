@@ -53,7 +53,7 @@ with the code**:
 ```
 pipeline/     collect.py → bronze.py → silver.py → gold.py     (data pipeline, DuckDB medallion)
 models/       train.py → evaluate.py → predict.py → track_predictions.py → backfill_live_predictions.py
-dashboard/    app.py (Streamlit UI) + charts.py + queries.py + insights.py
+dashboard/    app.py (Streamlit UI) + charts.py + queries.py + insights.py + chatbot.py
 refresh.sh    runs the full pipeline + auto-publishes to GitHub
 ```
 
@@ -114,6 +114,37 @@ that looks like stale hyperparameters rather than normal noise, or after a marke
 shift you'd expect to change the right hyperparameters (e.g. a volatility spike). After
 re-tuning, re-run `python models/evaluate.py` too, so `gold.model_scores.selected`
 reflects the new backtest results.
+
+## "Ask AI" chatbot (dashboard/chatbot.py)
+
+A local-LLM agent over the DuckDB data — **deliberately NOT a paid API** (explicit user
+decision: zero running cost, fully private). Ollama serves the model; default
+`llama3.1:8b`, overridable via the `OLLAMA_MODEL` env var — that constant is also the
+upgrade seam if a stronger model (or an API backend) is ever wanted.
+
+- **Layout**: pure agent core first (system prompt, 5 tools, executors, tool loop — no
+  Streamlit), UI wrapper at the bottom. Terminal smoke test without the dashboard:
+  `python -m dashboard.chatbot "latest gold price?"`.
+- **Tool surface**: 4 high-level tools reuse `queries.py`/`insights.py` (market snapshot,
+  forecast summary + consensus, model performance, dip analysis — pre-written commentary
+  does the analytical heavy lifting, the small model just assembles) + a hardened
+  `run_sql` escape hatch: statement-prefix allowlist, single statement only,
+  `SET enable_external_access=false` (blocks file reads via read_csv etc.), read-only
+  connection, 200-row/300-char truncation. Tool errors return as text so the model
+  reads them and retries (small local models miss SQL sometimes — this is the recovery
+  path, don't remove it).
+- **Ollama gotcha baked in**: default `num_ctx` is 4096 and it *silently truncates* —
+  every call passes `options={"num_ctx": 8192, "temperature": 0.2}`. History is capped
+  at ~6 exchanges, trimmed only at plain-user-turn boundaries so a tool result is never
+  orphaned from its call.
+- **Graceful degradation**: `ollama_status()` gates the page — missing package / server
+  down / model not pulled each show a matching notice; on Streamlit Cloud (no Ollama
+  server) this reads as "local mode only", by design. The rest of the dashboard never
+  depends on Ollama.
+- **Per-machine setup** (not in git): install Ollama + `ollama pull llama3.1:8b` +
+  `pip install ollama tabulate` in the venv. On the personal Ubuntu laptop Ollama runs
+  as a systemd **--user** service (`~/.config/systemd/user/ollama.service`, no-sudo
+  install under `~/.local/ollama`); on Windows use the ollama.com installer.
 
 ## Two requirements files
 
