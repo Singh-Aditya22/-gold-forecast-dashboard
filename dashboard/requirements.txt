@@ -1,0 +1,20 @@
+# Minimal dependency set for just SERVING the dashboard (dashboard/app.py and everything
+# it imports: charts.py, queries.py, insights.py, chatbot.py). The pipeline/model scripts
+# (collect.py, train.py, evaluate.py, predict.py) need the full requirements.txt at the
+# repo root instead -- this file exists only for Streamlit Community Cloud, which searches
+# for a requirements.txt in the entrypoint's own directory (dashboard/) BEFORE the repo
+# root -- see https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/app-dependencies.
+# There is no "pick a requirements file" setting in the Cloud UI; this file's location is
+# the only lever. Keep this in sync with requirements-dashboard.txt at the repo root
+# (kept there too for local reference/testing) whenever one changes.
+duckdb>=0.10.0
+pandas>=2.0.0
+numpy>=1.26.0
+streamlit>=1.35.0
+plotly>=5.22.0
+# "Ask AI" chatbot client (pure-Python, tiny). The chat only works where an Ollama server
+# runs locally (a laptop with the model pulled); on Streamlit Cloud there is no server, so
+# the page degrades to a "local mode only" notice -- installing this there is harmless.
+ollama>=0.4.0
+# insights/chatbot render DataFrames with df.to_markdown(), which needs tabulate.
+tabulate>=0.9.0

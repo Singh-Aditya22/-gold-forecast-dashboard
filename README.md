@@ -98,18 +98,29 @@ pip install ollama tabulate                      # the Python client, in your ve
 
 ## Deploying the dashboard (Streamlit Community Cloud)
 
-`dashboard/app.py` and everything it imports (`charts.py`, `queries.py`, `insights.py`)
-only need `streamlit`, `duckdb`, `pandas`, `numpy`, and `plotly` — the heavier libraries
-in `requirements.txt` (prophet, xgboost, lightgbm, pmdarima, torch, yfinance, mftool) are
-only used by the training pipeline scripts, not by the dashboard itself, since it just
-reads the pre-built `gold_forecast.duckdb`. Use **`requirements-dashboard.txt`** for a
-much faster, lighter cloud deploy:
+`dashboard/app.py` and everything it imports (`charts.py`, `queries.py`, `insights.py`,
+`chatbot.py`) only need `streamlit`, `duckdb`, `pandas`, `numpy`, `plotly`, `ollama`, and
+`tabulate` — the heavier libraries in the repo-root `requirements.txt` (prophet, xgboost,
+lightgbm, pmdarima, torch, yfinance, mftool) are only used by the training pipeline
+scripts, not by the dashboard itself, since it just reads the pre-built
+`gold_forecast.duckdb`.
+
+**Important:** Streamlit Community Cloud has no UI setting to pick a custom requirements
+filename — it always looks for a file named exactly `requirements.txt`, searching the
+entrypoint's own directory first and then the repo root
+([docs](https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/app-dependencies)).
+Since the entrypoint is `dashboard/app.py`, the lightweight file that matters for Cloud is
+**`dashboard/requirements.txt`** — it's found before the heavy root one and keeps Cloud
+builds fast. (`requirements-dashboard.txt` at the repo root is kept too, only for local
+reference/testing a lightweight venv — Cloud never reads it. Keep both in sync.) A past
+version of this README incorrectly said to set the requirements file via "Advanced
+settings" — that setting doesn't exist; ignore any old instructions saying otherwise.
 
 1. Go to [share.streamlit.io](https://share.streamlit.io), sign in with GitHub
 2. "New app" → this repo → branch `main` → main file path `dashboard/app.py`
-3. Under "Advanced settings", set the requirements file to `requirements-dashboard.txt`
-4. Deploy — auto-redeploys on every push to `main`. Delete the app from the same dashboard
-   to take it down (or just leave it — Streamlit's free tier auto-sleeps idle apps).
+3. Deploy — Cloud automatically finds `dashboard/requirements.txt` and auto-redeploys on
+   every push to `main`. Delete the app from the same dashboard to take it down (or just
+   leave it — Streamlit's free tier auto-sleeps idle apps).
 
 ## Dashboard pages
 

@@ -146,22 +146,49 @@ upgrade seam if a stronger model (or an API backend) is ever wanted.
   as a systemd **--user** service (`~/.config/systemd/user/ollama.service`, no-sudo
   install under `~/.local/ollama`); on Windows use the ollama.com installer.
 
-## Two requirements files
+## Requirements files (three, not two — a real incident, read this before touching any of them)
 
-- `requirements.txt` — full set, needed for the pipeline/model scripts (prophet, xgboost,
-  lightgbm, pmdarima, torch, yfinance, mftool). Install torch separately with the CPU-only
-  index (`pip install torch --index-url https://download.pytorch.org/whl/cpu`) to avoid
-  pulling CUDA wheels.
-- `requirements-dashboard.txt` — just `duckdb`/`pandas`/`numpy`/`streamlit`/`plotly`, since
-  `dashboard/app.py` and everything it imports only reads the pre-built
-  `gold_forecast.duckdb`, never touches the training libraries. Used for the Streamlit
-  Community Cloud deploy (fast, light build).
+- `requirements.txt` (repo root) — full set, needed for the pipeline/model scripts
+  (prophet, xgboost, lightgbm, pmdarima, torch, yfinance, mftool). Install torch
+  separately with the CPU-only index (`pip install torch --index-url
+  https://download.pytorch.org/whl/cpu`) to avoid pulling CUDA wheels.
+- `dashboard/requirements.txt` — the one that actually governs the Streamlit Cloud
+  deploy. Just `duckdb`/`pandas`/`numpy`/`streamlit`/`plotly`/`ollama`/`tabulate`.
+- `requirements-dashboard.txt` (repo root) — same lightweight content, kept only for
+  local reference/testing a lightweight venv. **Cloud never reads this file.** Keep it
+  in sync with `dashboard/requirements.txt` by hand whenever one changes.
+
+**Why three files exist, not two:** Streamlit Community Cloud has **no UI setting** to
+point at a custom requirements filename — despite this repo's README/CLAUDE.md
+previously saying "set the requirements file to `requirements-dashboard.txt` under
+Advanced settings." That setting doesn't exist and never did (confirmed against
+Streamlit's own docs on 2026-07-10, after the wrong instructions caused a real incident
+— see below). Cloud always looks for a file named exactly `requirements.txt`, searching
+the **entrypoint's own directory first, then the repo root**. Since the entrypoint is
+`dashboard/app.py`, putting the lightweight file at `dashboard/requirements.txt` makes
+Cloud find and use it before ever reaching the heavy root file — no dropdown, no
+settings, just the file's location.
+
+**Incident this fixed (2026-07-10):** the Cloud app had been installing from the
+repo-root `requirements.txt` (88-94 packages, including prophet/pmdarima's cmdstan
+bridge, xgboost, lightgbm, scikit-learn, scipy, mftool) instead of the intended
+lightweight set the whole time — the "Advanced settings" step in the old deploy
+instructions was never real, so the setting was never actually applied. This made
+builds slow, and right after the Ask AI chatbot's `ollama`/`pydantic` dependencies were
+added, the Streamlit process **segfaulted** (a native crash, not a Python exception) —
+almost certainly a C-extension ABI conflict from having that many compiled libraries
+(duckdb, pyarrow, numpy, scipy, xgboost, lightgbm, prophet's Stan bridge, pydantic-core)
+loaded together on Cloud's Python 3.14 runtime. An initial diagnosis blamed a `str |
+None` type-hint needing Python 3.10+ — that fix was harmless but wrong; the Cloud log
+showed Python 3.14.6, which supports that syntax fine. The real fix was moving the
+lightweight requirements file to `dashboard/requirements.txt`.
 
 ## Deployment
 
 Live on Streamlit Community Cloud (auto-redeploys on every push to `main`, reading
-`requirements-dashboard.txt`). See README for the deploy steps if setting this up fresh
-on a new Streamlit Cloud account.
+`dashboard/requirements.txt` per the entrypoint-directory-first search order above — NOT
+a Cloud UI setting). See README for the deploy steps if setting this up fresh on a new
+Streamlit Cloud account.
 
 ## Known simplifications (already accepted, not bugs to "fix" reflexively)
 
