@@ -26,6 +26,7 @@ COLORS = {
     "gold_futures":  "#FFD700",
     "goldbees_etf":  "#FF6B35",
     "hdfc_gold_etf": "#4ECDC4",
+    "goldcase_etf":  "#9B59B6",
     "sbi_gold_nav":  "#A8DADC",
 }
 

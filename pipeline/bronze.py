@@ -16,6 +16,7 @@ OHLCV_TABLES = {
     "usd_inr": "usd_inr",
     "goldbees_etf": "goldbees_etf",
     "hdfc_gold_etf": "hdfc_gold_etf",
+    "goldcase_etf": "goldcase_etf",
     "vix": "vix",
     "crude_oil": "crude_oil",
     "usd_index": "usd_index",

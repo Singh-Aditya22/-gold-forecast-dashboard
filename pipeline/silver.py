@@ -60,6 +60,16 @@ def build_silver(con: duckdb.DuckDBPyConnection) -> None:
             WHERE close IS NOT NULL
         ),
 
+        goldcase AS (
+            SELECT
+                date,
+                'goldcase_etf'  AS instrument,
+                open, high, low, close, volume,
+                close           AS close_inr
+            FROM bronze.goldcase_etf
+            WHERE close IS NOT NULL
+        ),
+
         sbi_nav AS (
             SELECT
                 date,
@@ -80,6 +90,8 @@ def build_silver(con: duckdb.DuckDBPyConnection) -> None:
             SELECT * FROM goldbees
             UNION ALL
             SELECT * FROM hdfc_gold
+            UNION ALL
+            SELECT * FROM goldcase
             UNION ALL
             SELECT * FROM sbi_nav
         ),

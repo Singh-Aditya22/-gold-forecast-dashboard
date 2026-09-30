@@ -267,7 +267,7 @@ elif page == "Individual Instrument":
         else:
             st.info("Not enough history yet for a month-by-month seasonal read (needs 2+ years).")
 
-        if instrument in ("goldbees_etf", "hdfc_gold_etf"):
+        if instrument in ("goldbees_etf", "hdfc_gold_etf", "goldcase_etf"):
             premium_df = queries.get_etf_premium(instrument, str(start), str(end))
             if not premium_df.empty and premium_df["premium_zscore"].notna().any():
                 st.subheader("Is this ETF rich or cheap vs. international gold?")

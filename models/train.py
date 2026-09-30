@@ -135,11 +135,12 @@ def tune_lightgbm(train_df):
     return search.best_estimator_, search.best_params_
 
 
-def train_all() -> None:
+def train_all(instruments=None) -> None:
+    instruments = instruments or INSTRUMENTS
     os.makedirs(SAVED_DIR, exist_ok=True)
     con = duckdb.connect(DB_PATH)
 
-    for instrument in INSTRUMENTS:
+    for instrument in instruments:
         print(f"\n[train] === {instrument} ===")
         df = load_instrument_data(con, instrument)
         train_df = df[df["date"] <= TRAIN_END].copy()
@@ -174,5 +175,8 @@ def train_all() -> None:
 
 
 if __name__ == "__main__":
-    train_all()
+    # Optional instrument names as CLI args (e.g. `python train.py goldcase_etf`) to
+    # (re)tune just the ones given, instead of every instrument in common.INSTRUMENTS --
+    # useful when only adding/fixing one instrument rather than doing a full periodic retune.
+    train_all(sys.argv[1:] or None)
     print("\n[train] Done. All models saved.")

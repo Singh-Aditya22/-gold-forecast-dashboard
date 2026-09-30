@@ -191,7 +191,7 @@ def build_etf_premium(con: duckdb.DuckDBPyConnection) -> None:
         etf AS (
             SELECT date, instrument, close_inr AS etf_inr
             FROM silver.prices
-            WHERE instrument IN ('goldbees_etf', 'hdfc_gold_etf')
+            WHERE instrument IN ('goldbees_etf', 'hdfc_gold_etf', 'goldcase_etf')
         ),
 
         ratio AS (

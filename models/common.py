@@ -19,7 +19,7 @@ TRAIN_END = "2024-12-31"
 TEST_START = "2025-01-01"
 TEST_END = "2025-12-31"
 
-INSTRUMENTS = ["gold_futures", "goldbees_etf", "hdfc_gold_etf"]
+INSTRUMENTS = ["gold_futures", "goldbees_etf", "hdfc_gold_etf", "goldcase_etf"]
 
 LAG_COLS = ["lag_1", "lag_7", "lag_30"]
 TECH_COLS = ["ma_50", "ma_200", "rsi_14", "bb_upper", "bb_lower", "rolling_vol_30d", "drawdown_pct"]

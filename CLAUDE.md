@@ -197,8 +197,10 @@ Streamlit Cloud account.
 - The evaluate.py backtest gives Prophet/ARIMA "perfect foresight" on 2025's actual macro
   values, which real deployment can't have (see [[project_qbo_copy_into_plan]]-style
   caveats aren't relevant here, but the same kind of backtest-vs-live gap applies).
-- `hdfc_gold_etf` has the shortest history (since June 2023) — expect noisier
-  small-sample behavior for that instrument specifically.
+- `hdfc_gold_etf` (since June 2023) and `goldcase_etf` (Zerodha AMC's Gold ETF,
+  ticker GOLDCASE, since March 2024 — shorter than HDFC's) have the least
+  history of the modeled instruments — expect noisier small-sample behavior,
+  especially for goldcase_etf.
 
 ## For a full change history / more lessons
 

@@ -1,0 +1,8 @@
+{
+  "subsample": 1.0,
+  "num_leaves": 31,
+  "n_estimators": 100,
+  "max_depth": 5,
+  "learning_rate": 0.01,
+  "colsample_bytree": 1.0
+}

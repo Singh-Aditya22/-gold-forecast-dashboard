@@ -18,6 +18,7 @@ YFINANCE_TICKERS = {
     "usd_inr": "USDINR=X",
     "goldbees_etf": "GOLDBEES.NS",
     "hdfc_gold_etf": "HDFCGOLD.NS",
+    "goldcase_etf": "GOLDCASE.NS",
     # Macro/geopolitical-risk proxies (exogenous features) — gold is a well-documented
     # hedge against risk-off events (wars, shocks): VIX = fear gauge, crude oil often
     # co-moves with geopolitical tension, USD index has an inverse correlation with gold,

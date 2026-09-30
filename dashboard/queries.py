@@ -13,11 +13,12 @@ INSTRUMENT_LABELS = {
     "gold_futures":  "Gold Futures (GC=F)",
     "goldbees_etf":  "Nippon Gold BeES ETF",
     "hdfc_gold_etf": "HDFC Gold ETF",
+    "goldcase_etf":  "Zerodha Gold ETF (GOLDCASE)",
     "sbi_gold_nav":  "SBI Gold Fund (NAV)",
 }
 
 ALL_INSTRUMENTS = list(INSTRUMENT_LABELS.keys())
-OHLCV_INSTRUMENTS = ["gold_futures", "goldbees_etf", "hdfc_gold_etf"]
+OHLCV_INSTRUMENTS = ["gold_futures", "goldbees_etf", "hdfc_gold_etf", "goldcase_etf"]
 
 # Every model predict.py generates a forecast for, per instrument.
 ALL_MODEL_NAMES = ["naive", "prophet", "arima", "xgboost", "lightgbm", "lstm", "ensemble"]

@@ -84,7 +84,7 @@ SYSTEM_PROMPT = f"""You are the built-in assistant of a personal "Gold Forecast 
 
 Instruments (exact keys):
 {_instrument_lines}
-Caveats: hdfc_gold_etf has history only since June 2023 (noisier stats); sbi_gold_nav is NAV-only with NO forecasts or technical features.
+Caveats: hdfc_gold_etf has history only since June 2023 (noisier stats); goldcase_etf has history only since March 2024 (shortest of any modeled instrument, noisiest stats); sbi_gold_nav is NAV-only with NO forecasts or technical features.
 
 Models: {_model_lines}. skill_score_vs_naive > 0 means the model beats the naive random-walk baseline (tomorrow = today) -- the honest bar in finance. Backtest scores test models frozen at end-2024 against 2025; the live track record logs real daily predictions -- they can disagree, and the live record matters more as it grows.
 
