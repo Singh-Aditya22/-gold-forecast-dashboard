@@ -42,8 +42,22 @@ if (-not (Test-Path $activateScript)) {
 . $activateScript
 
 Log "[1/10] Pulling latest data..."
-$pullOut = git pull --quiet 2>&1
+# Native-command stderr redirected via 2>&1 becomes a terminating NativeCommandError
+# under $ErrorActionPreference = "Stop" (PS 5.1 quirk) -- that silently killed this
+# script right here on every run for ~2 months whenever git pull failed (e.g. local
+# uncommitted changes to gold_forecast.duckdb blocking the merge), with no error ever
+# reaching the log. Temporarily relax EAP so a failed pull is logged and handled
+# explicitly instead of vanishing.
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$pullOut = (git pull --quiet 2>&1 | Out-String).Trim()
+$pullExit = $LASTEXITCODE
+$ErrorActionPreference = $prevEAP
 Log "[git]  $pullOut"
+if ($pullExit -ne 0) {
+    Log "[ERROR] git pull failed (exit $pullExit) -- resolve manually (e.g. commit/stash local changes to gold_forecast.duckdb) and re-run. Aborting."
+    exit 1
+}
 
 Log "[2/10] Collecting raw data..."
 python pipeline\collect.py
